@@ -1,0 +1,131 @@
+Monitoramento Off-grid de Pivôs Centrais com Bateria e Painel Solar
+
+Aluno: Eduardo Resende – Matrícula: 964
+Disciplina: TP 546 – Data de conclusão: 07/10/2025
+
+Introdução
+
+Este trabalho apresenta a concepção e a análise de um dispositivo exclusivamente voltado ao monitoramento de pivôs centrais de irrigação, com operação off-grid (painel solar + bateria) e recarga oportunística quando o pivô está em movimento (momento em que há energia no “capacete”). A solução realiza leituras contínuas de sentido de giro, percentímetro (percentual de avanço), pressão de linha, posição georreferenciada e pluviometria, transmitindo dados por LTE, podendo também comunicar via NB-IoT, Wi-Fi e comunicação satelital para áreas sem cobertura celular ou com conectividade limitada de Wi-Fi.
+
+As mensagens podem ser enviadas de forma periódica ou armazenadas localmente em casos de indisponibilidade de rede (store-and-forward), garantindo posterior transmissão. Além disso, o equipamento pode atuar em modo assíncrono, registrando apenas o ciclo completo de irrigação e enviando os pacotes ao final da operação, otimizando energia e largura de banda.
+
+Panorama e relevância
+
+O Brasil figura entre os países com maior área equipada para irrigação e vem expandindo rapidamente a adoção de pivôs centrais. Nesse contexto, a relevância do tema está em aplicar IoT de monitoramento para reduzir o tempo de detecção de falhas na irrigação, identificar queda de pressão/energia e obstruções do trajeto em minutos, preservando a janela de irrigação e evitando perdas de produtividade.
+
+Fundamentação Teórica (síntese)
+
+IoT agrícola (monitoramento): sensores no “capacete” do pivô → unidade de processamento (borda) → nuvem.
+
+Conectividade heterogênea: LTE como primária; NB-IoT/Cat-M1 como link de baixo consumo; Wi-Fi para comissionamento; satélite como contingência.
+
+Processamento local leve: filtros simples (médias/limiares) e regras determinísticas para gerar eventos/alertas (sem IA).
+
+Gestão energética: duty-cycle agressivo, deep-sleep, amostragem adaptativa e recarga oportunística pelo coletor do pivô.
+
+Telemetria e segurança: MQTT/HTTPS, TLS, retenção do “último estado”, e buffer quando sem rede.
+
+Sensores e variáveis monitoradas
+
+Sentido do pivô: horário / anti-horário.
+
+Percentímetro: % de avanço (relacionado ao controle de lâmina).
+
+Pressão: transdutor 0–1,2 MPa (≈0–174 psi), saída 0,5–4,5 V @ 5 V (USP-G41).
+
+Posição: GNSS NEO-6M (GY-GPS6M) — NMEA via UART (3,3 V), 9600 bps.
+
+Pluviometria: pluviômetro óptico com medição por pulso (contagem de eventos).
+
+Especificações relevantes: 0–>300 mm/h, 0,08 mm de resolução, 1 Hz, IP66, 5–30 Vdc (aquecimento integrado).
+
+Especificações técnicas do protótipo (síntese)
+1) Unidade de processamento (cérebro)
+
+MCU/SoC: ESP32-WROVER-B/E (enviado aleatoriamente).
+
+Memórias: Flash 4–16 MB, PSRAM 8 MB, SRAM 520 kB.
+
+Clock: cristal 40 MHz.
+
+Energia do SoC: 2,7–3,6 V; sono ~700 µA.
+
+Interface USB: CH9102F (USB-C para debug/provisionamento).
+
+Periféricos na placa: slot SIM (nano) e mini-PCIe para modem.
+
+Faixa térmica: –40 ºC a +85 ºC.
+
+PMU/charge: AXP192 — entrada USB 5 V/1 A, carga 500 mA; bateria 3,7–4,2 V (JST 2 pinos, 2,0 mm).
+
+Dimensões/peso (placa): 75×33×10,5 mm, ~14,5 g.
+
+2) Sensores (elétrico e integração)
+
+Pressão (USP-G41): 5 Vdc, saída 0,5–4,5 V (ratiométrica), ≤2 ms, ±1,5% FS, rosca G1/4; operação 0–85 ºC.
+
+Nota: em sistema 3,3 V, usar divisor ou ADC externo 5 V/16 bits + filtro RC e calibração (offset/ganho).
+
+GNSS (NEO-6M / GY-GPS6M): 3,3–5 V, UART 3,3 V, 9600 bps, módulo 30×23×4 mm, antena 25×25×8 mm.
+
+Pluviômetro óptico: 5–30 Vdc, 1 Hz, IP66; configurado em modo pulso (contagem), com debounce por tempo e fator mm/pulso calibrável.
+
+3) Conectividade (módulos e bandas)
+
+LTE principal (alto throughput): A7608SA-H-PCIEA (LTE Cat-4, mini-PCIe)
+
+Redes: LTE-FDD/TDD + HSPA+ + GSM/EDGE. Taxas: DL 150 Mb/s / UL 50 Mb/s.
+
+Alimentação: 3,0–3,6 V (típ. 3,3 V). Interfaces: USB 2.0, UART, (U)SIM 1,8/3 V, I²C/GPIO, áudio.
+
+Protocolos: TCP/UDP/IPv4/IPv6, HTTP(S), FTP(S), DNS, RNDIS/PPP/ECM, SMS; FOTA/SSL/LBS.
+
+Ambiente: –40 ºC a +85 ºC; 50,8×31×5,35 mm.
+
+NB-IoT / Cat-M1 (baixo consumo): SIM7070G-PCIE (mini-PCIe)
+
+Bandas globais para Cat-M1 e NB-IoT + GSM/EDGE (fallback).
+
+Alimentação: 3,3–4,3 V (típ. 3,8 V). USB 2.0 (dados/AT/FOTA).
+
+Pilhas: TCP/UDP/HTTP(S)/FTP(S)/TLS/DTLS, LwM2M/CoAP/MQTT, FOTA.
+
+Ambiente: –40 ºC a +85 ºC; 50,8×30×4,9 mm.
+
+Wi-Fi: nativo do ESP32 (provisionamento local/diagnóstico).
+
+Satélite (opcional): para regiões sem cobertura celular (payloads agregados).
+
+4) Alimentação e energia (off-grid)
+
+Bateria: Li-ion 3,7–4,2 V (gerenciada pelo AXP192).
+
+Painel solar: dimensionado ao pior mês; entrada USB 5 V/1 A para carga de bancada.
+
+Recarga oportunística: entrada isolada ligada ao coletor do pivô quando energizado (retificação + buck isolado).
+
+Estratégia: deep-sleep, janelas curtas de TX, amostragem adaptativa (mais densa em movimento), store-and-forward.
+
+Modos de operação e telemetria
+
+Periódico: pacotes MQTT com estado atual (direção, % avanço, pressão, posição, chuva) em intervalos configuráveis (ex.: 30–60 s em operação, 5–10 min em repouso).
+
+Assíncrono por ciclo: registra todo o ciclo e envia ao final (estatísticas + eventos), economizando energia e dados.
+
+Eventos/Alarmes: regras determinísticas na borda (sem IA):
+
+Pressão baixa: p < p_min por Δt enquanto pivô deveria avançar.
+
+Queda de energia: estagnação brusca de percentímetro/posição + perda da recarga via coletor.
+
+Obstrução do trajeto: Δposição ≈ 0 e Δpercentímetro ≈ 0, com pressão normal.
+
+Desafios e oportunidades
+
+Desafios: ruído/EMI no “capacete” (usar isolação/TVS/aterramento), sazonalidade de energia (dimensionar painel/bateria; monitorar SOC), cobertura celular irregular (multi-bearer + buffer), variação de sinais entre marcas (perfis e calibração).
+
+Oportunidades: menos visitas de campo, detecção precoce de travas/falhas, melhor uniformidade e eficiência hídrica, dados históricos para indicadores de disponibilidade e planejamento de manutenção.
+
+Conclusão
+
+O dispositivo proposto entrega monitoramento confiável e autônomo de pivôs centrais: sensores essenciais, borda eficiente (regras simples), conectividade flexível (LTE, NB-IoT, Wi-Fi e satélite) e gestão energética adequada ao campo (painel + bateria + recarga pelo coletor). O arranjo técnico — ESP32-WROVER, A7608 (Cat-4) e SIM7070 (NB-IoT/Cat-M1), com USP-G41 (pressão), NEO-6M (posição) e pluviômetro óptico por pulso — atende ao objetivo do trabalho: monitorar (não controlar) o pivô, detectar queda de pressão/energia e obstruções com rapidez, preservando a janela de irrigação e a produtividade.
